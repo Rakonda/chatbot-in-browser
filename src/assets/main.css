@@ -20,6 +20,10 @@
   overflow-y: scroll;
 }
 
+button.submit:disabled {
+  background-color: #ababab;
+}
+
 .spinner {
   width: 60px;
   text-align: center;

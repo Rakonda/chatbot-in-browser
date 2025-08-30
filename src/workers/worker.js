@@ -1,11 +1,6 @@
 import { pipeline, AutoTokenizer } from '@huggingface/transformers'
 
-let generator
-let tokenizer
-let totalBytes = 0
-let receivedBytes = 0
-let fileSizes = new Map() // url -> size
-let lastPercent = 0 // last reported %
+const model = 'Xenova/Qwen1.5-0.5B-Chat'
 const originalFetch = globalThis.fetch
 const config = {
   botTone: {
@@ -77,17 +72,26 @@ const config = {
     },
   },
 }
-// Chat history that will keep the ai memory of previous interactions. This is a list of objects, each containing a role and a content.
-// The role can be 'system', 'use/**
-// The last message in the list is the most recent user message. The rest of the messages are the ai generated so far.
+let generator
+let tokenizer
+let totalBytes = 0
+let receivedBytes = 0
+let fileSizes = new Map() // url -> size
+let lastPercent = 0 // last reported %
 let history = [
   {
     role: 'system',
-    content: config.personas.playful.system_prompt,
+    content: config.personas.balanced.system_prompt,
   },
 ]
+// Patch fetch
+globalThis.fetch = (url, opts) =>
+  fetchWithProgress(url, opts, (percent) => {
+    reportProgress(percent)
+  })
 
 function bytesForHuman(bytes) {
+  if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
   while (bytes > 1024 && units.length) {
     bytes /= 1024
@@ -96,7 +100,6 @@ function bytesForHuman(bytes) {
   return bytes.toFixed(1) + ' ' + units[0]
 }
 
-// --- Progress-friendly fetch wrapper ---
 function reportProgress(percent) {
   const rounded = Math.floor(percent) // report only whole %
   if (rounded > lastPercent) {
@@ -105,53 +108,72 @@ function reportProgress(percent) {
       type: 'download-progress',
       progress: rounded, // clean int 0–100
       fileSize: bytesForHuman(totalBytes),
+      received: bytesForHuman(receivedBytes),
     })
   }
 }
 
-async function fetchWithProgress(url, opts, onProgress) {
-  const response = await originalFetch(url, opts)
-  if (!response.ok) throw new Error(`Failed to fetch ${url}`)
+async function fetchWithProgress(url, opts, onProgress, retries = 3) {
+  let attempt = 0
 
-  const contentLength = +response.headers.get('Content-Length')
-  if (!response.body) {
-    return response // no streaming available
+  while (attempt < retries) {
+    try {
+      const response = await originalFetch(url, opts)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`)
+      }
+
+      const contentLength = +response.headers.get('Content-Length')
+      if (!response.body) {
+        // no streaming available, just return
+        return response
+      }
+
+      // Register file size once
+      if (contentLength && !fileSizes.has(url)) {
+        fileSizes.set(url, contentLength)
+        totalBytes = [...fileSizes.values()].reduce((a, b) => a + b, 0)
+      }
+
+      const reader = response.body.getReader()
+      let chunks = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+
+        // Update counters safely
+        receivedBytes += value.length
+        const percent = totalBytes ? Math.min(100, (receivedBytes / totalBytes) * 100) : 0
+
+        try {
+          onProgress?.(percent, receivedBytes, totalBytes)
+        } catch (cbErr) {
+          // Don’t let a broken callback crash downloads
+          console.error('Progress callback failed:', cbErr)
+        }
+      }
+
+      return new Response(new Blob(chunks), {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      })
+    } catch (err) {
+      attempt++
+      console.error(`Download attempt ${attempt} failed for ${url}:`, err)
+
+      if (attempt >= retries) {
+        // Bubble error to worker main loop
+        throw new Error(`Download failed after ${retries} attempts: ${url}`)
+      }
+
+      // small backoff before retry
+      await new Promise((res) => setTimeout(res, 1000 * attempt))
+    }
   }
-
-  // Register file size once
-  if (contentLength && !fileSizes.has(url)) {
-    fileSizes.set(url, contentLength)
-    totalBytes = [...fileSizes.values()].reduce((a, b) => a + b, 0)
-  }
-
-  const reader = response.body.getReader()
-  let chunks = []
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-
-    // Update counters
-    receivedBytes += value.length
-
-    // Global %
-    const percent = totalBytes ? Math.min(100, (receivedBytes / totalBytes) * 100) : 0
-    onProgress(percent)
-  }
-
-  return new Response(new Blob(chunks), {
-    headers: response.headers,
-    status: response.status,
-    statusText: response.statusText,
-  })
 }
-
-// Patch fetch
-globalThis.fetch = (url, opts) =>
-  fetchWithProgress(url, opts, (percent) => {
-    reportProgress(percent)
-  })
 
 function setHistoryQuota(limit) {
   const systemMessage = history[0]
@@ -170,8 +192,8 @@ self.onmessage = async (event) => {
   switch (type) {
     case 'init': {
       // Load tokenizer + model
-      tokenizer = await AutoTokenizer.from_pretrained('HuggingFaceTB/SmolLM2-135M-Instruct')
-      generator = await pipeline('text-generation', 'HuggingFaceTB/SmolLM2-135M-Instruct', {
+      tokenizer = await AutoTokenizer.from_pretrained(model)
+      generator = await pipeline('text-generation', model, {
         // Data type ref: https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/tree/main/onnx
         // On CPU:
         // int8 is fast
@@ -194,37 +216,26 @@ self.onmessage = async (event) => {
       }
 
       self.postMessage({ type: 'thinking' })
-
       // Add user message to history
       history.push({ role: 'user', content: text })
-
       // Build prompt with system + all past messages
       const prompt = tokenizer.apply_chat_template(history, {
         tokenize: false,
         add_generation_prompt: true, // tell model it's assistant's turn
       })
-
       // Generate reply
-      const output = await generator(prompt, config.botTone.playful_sarcastic)
-
+      const output = await generator(prompt, config.botTone.balanced)
       // Extract assistant response
       const reply = output[0].generated_text.replace(prompt, '').trim()
-
       // Add assistant reply to history
       history.push({ role: 'assistant', content: reply })
-
       // Limit the history log to the last 10 messages
       history = setHistoryQuota(10)
-
       // Send back
       self.postMessage({ type: 'response', data: reply })
-
-      console.log(history)
       break
     }
-
     default:
-      // Ignore unknown message types
-      break
+      throw new Error(`Unknown worker message type: ${event.data.type}`)
   }
 }

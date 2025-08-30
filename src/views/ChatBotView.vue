@@ -1,32 +1,63 @@
 <script lang="ts" setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import workerUrl from '../workers/worker?worker&url'
 
 const worker = new Worker(workerUrl, { type: 'module' })
-const isLoaded = ref<boolean>(false)
+const thinking = ref<boolean>(false)
 const messages = ref<Array<{ sender: string; text: string }>>([])
 const input = ref<string>('')
+const chatContainer = ref<HTMLDivElement | null>(null)
 
 function handleClick() {
   if (input.value === '') return
   messages.value.push({ sender: 'me', text: input.value })
   worker.postMessage({ type: 'generate', text: input.value })
   input.value = ''
+  thinking.value = false
+}
+
+function scrollToBottom() {
+  if (chatContainer.value) {
+    chatContainer.value.scrollTo({
+      top: chatContainer.value.scrollHeight,
+      behavior: 'smooth',
+    })
+  }
 }
 
 onMounted(() => {
   worker.postMessage({ type: 'init' })
-  worker.onmessage = (event) => {
-    console.log(event.data.type)
-    if (event.data.type === 'ready') {
-      console.log(event.data.type)
-      isLoaded.value = true
-    }
-    if (event.data.type === 'response') {
-      messages.value.push({ sender: 'bot', text: event.data.data })
+
+  worker.onmessage = async (event) => {
+    switch (event.data.type) {
+      case 'ready':
+        console.log(event.data.type)
+        thinking.value = true
+        break
+      case 'thinking':
+        console.log('thinking')
+        break
+      case 'download-progress':
+        console.log(event.data)
+        break
+      case 'response':
+        messages.value.push({ sender: 'bot', text: event.data.data })
+        thinking.value = true
+        break
+      default:
+        break
     }
   }
+
+  watch(
+    () => messages.value, // explicitly watch the array value
+    async () => {
+      await nextTick()
+      scrollToBottom()
+    },
+    { deep: true }, // ensures mutations like push/splice are caught
+  )
 })
 
 onUnmounted(() => {
@@ -36,10 +67,15 @@ onUnmounted(() => {
 
 <template>
   <!-- Chat messages container -->
-  <div class="flex-1 overflow-y-auto chat-messages p-4 space-y-4">
+  <div class="flex-1 overflow-y-auto chat-messages p-4 space-y-4" ref="chatContainer">
     <template v-for="todo in messages" :key="todo.sender">
       <ChatMessage :message="todo" :time="new Date()" />
     </template>
+    <div class="spinner" v-if="!thinking">
+      <div class="bounce1"></div>
+      <div class="bounce2"></div>
+      <div class="bounce3"></div>
+    </div>
   </div>
 
   <!-- Input area -->
@@ -56,6 +92,7 @@ onUnmounted(() => {
         />
       </div>
       <button
+        :disabled="!thinking"
         type="submit"
         class="bg-indigo-600 text-white rounded-full p-2 hover:bg-indigo-700 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
       >

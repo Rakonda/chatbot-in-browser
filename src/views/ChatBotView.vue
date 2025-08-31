@@ -1,12 +1,13 @@
 <script lang="ts" setup>
 import ThinkingAnimation from '@/components/ThinkingAnimation.vue'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import ChatInputForm from '../components/ChatInputForm.vue'
-import ChatMessage from '../components/ChatMessage.vue'
-import DownloadProgress from '../components/DownloadProgress.vue'
-import workerUrl from '../workers/worker?worker&url'
+import ChatInputForm from '@/components/ChatInputForm.vue'
+import ChatMessage from '@/components/ChatMessage.vue'
+import DownloadProgress from '@/components/DownloadProgress.vue'
 
-const worker = new Worker(workerUrl, { type: 'module' })
+const worker = new Worker(new URL('@/workers/worker.js', import.meta.url), {
+  type: 'module',
+})
 const thinking = ref<boolean>(false)
 const messages = ref<Array<{ sender: string; text: string }>>([])
 const input = ref<string>('')

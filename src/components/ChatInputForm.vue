@@ -10,6 +10,7 @@
         :disabled="thinking"
         :value="input"
         @input="onInput"
+        ref="qqq"
       />
     </div>
     <button
@@ -26,7 +27,7 @@
 </template>
 
 <script lang="ts" setup>
-import { defineProps, defineEmits } from 'vue'
+import { defineEmits, defineProps } from 'vue'
 defineProps<{ input: string; thinking: boolean }>()
 const emit = defineEmits(['update:input', 'submit'])
 function onInput(e: Event) {

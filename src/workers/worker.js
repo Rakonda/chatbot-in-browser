@@ -1,6 +1,6 @@
 import { pipeline, AutoTokenizer } from '@huggingface/transformers'
 
-const model = 'Xenova/Qwen1.5-0.5B-Chat'
+const model = 'HuggingFaceTB/SmolLM-360M-Instruct'
 const originalFetch = globalThis.fetch
 const config = {
   botTone: {
@@ -11,7 +11,6 @@ const config = {
       top_p: 0.9,
       repetition_penalty: 1.1,
       diversity_penalty: 0.5,
-      stop_sequences: ['\n\n', 'END'],
       return_full_text: false,
     },
     factual_assistant: {
@@ -21,7 +20,6 @@ const config = {
       top_p: 1.0,
       repetition_penalty: 1.0,
       diversity_penalty: 0.0,
-      stop_sequences: ['\n\n', 'END'],
       return_full_text: false,
     },
     wild_unpredictable: {
@@ -31,7 +29,6 @@ const config = {
       top_p: 0.85, // Lowered to cut off nonsense words
       repetition_penalty: 1.15, // Slightly increased to prevent loops
       diversity_penalty: 0.3,
-      stop_sequences: ['\n\n', 'END'],
       return_full_text: false,
     },
     balanced: {
@@ -41,7 +38,6 @@ const config = {
       top_p: 0.92,
       repetition_penalty: 1.05,
       diversity_penalty: 0.5,
-      stop_sequences: ['\n\n', 'END'],
       return_full_text: false,
     },
   },
@@ -87,6 +83,7 @@ let history = [
 // Patch fetch
 globalThis.fetch = (url, opts) =>
   fetchWithProgress(url, opts, (percent) => {
+    lastPercent = 0
     reportProgress(percent)
   })
 

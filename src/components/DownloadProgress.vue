@@ -1,8 +1,10 @@
 <template>
-  <div class="flex justify-center items-center mt-2 px-1 text-xs text-gray-500 flex-col">
-    <span> Downloading Model {{ received }} / {{ fileSize }} ({{ progress }}%)</span>
+  <div class="flex mt-2 px-1 text-xs text-gray-500 flex-col">
+    <span class="text-center">
+      Downloading Model {{ received }} / {{ fileSize }} ({{ progress }}%)</span
+    >
     <div
-      class="bg-blue-500 h-1 rounded-full transition-all duration-300"
+      class="bg-blue-500 h-1 rounded-full transition-all duration-150"
       :style="{ width: progress + '%' }"
     ></div>
   </div>

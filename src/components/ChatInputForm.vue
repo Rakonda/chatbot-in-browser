@@ -1,5 +1,8 @@
 <template>
-  <form class="flex items-center space-x-2" @submit.prevent="emit('submit')">
+  <form
+    class="flex items-center space-x-2"
+    @submit.prevent="emit('submit')"
+  >
     <div class="flex-1 relative">
       <input
         type="text"
@@ -22,7 +25,7 @@
     </button>
   </form>
   <div class="flex justify-end items-center mt-2 px-1 text-xs text-gray-500">
-    <span>Press Enter to send</span>
+    <span :hidden="thinking">Press Enter to send</span>
   </div>
 </template>
 

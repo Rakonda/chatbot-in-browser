@@ -1,6 +1,6 @@
 # AI Assistant Chatbot in Browser
 
-A web-based AI chatbot built with Vue 3, TypeScript, and Vite. The app leverages modern front-end tech (Pinia, Vue Router, TailwindCSS) and integrates HuggingFace/Xenova Transformers for running AI models directly in your browser using Web Workers.
+A web-based AI chatbot built with Vue 3, TypeScript, and Vite. The app leverages modern front-end tech (Pinia, Vue Router, TailwindCSS) and integrates @huggingface/transformers for running AI models directly in your browser using Web Workers.
 
 ## Features
 
